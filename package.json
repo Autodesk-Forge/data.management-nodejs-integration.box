@@ -1,0 +1,32 @@
+{
+  "name": "data.management-nodejs-integration.box",
+  "version": "1.0.0",
+  "description": "Basic integration between Data Management API & Box",
+  "dependencies": {
+    "body-parser": "*",
+    "bootstrap": "*",
+    "box-node-sdk": "*",
+    "cookie-parser": "*",
+    "express": "*",
+    "express-session": "*",
+    "forge-data-management": "*",
+    "forge-model-derivative": "*",
+    "forge-oauth2": "*",
+    "forge-oss": "*",
+    "jquery": "*",
+    "jstree": "*",
+    "moment": "*",
+    "request": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/developer-autodesk/data.management-nodejs-integration.box"
+  },
+  "scripts": {
+    "start": "NODE_ENV=production node start.js",
+    "dev": "node start.js",
+    "nodemon": "nodemon start.js --ignore www/"
+  },
+  "author": "Augusto Goncalves (Forge Partner Development)",
+  "license": "MIT"
+}
