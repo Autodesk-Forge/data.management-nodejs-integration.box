@@ -236,11 +236,11 @@ function versionSpecData(filename, folderId, objectId) {
     jsonapi: {
       version: "1.0"
     },
-    data: [
+    data:
       {
         type: "items",
         attributes: {
-          name: filename,
+          displayName: filename,
           extension: {
             type: "items:autodesk.core:File",
             version: "1.0"
@@ -260,14 +260,17 @@ function versionSpecData(filename, folderId, objectId) {
             }
           }
         }
-      }
-    ],
+      },
     included: [
       {
         type: "versions",
         id: "1",
         attributes: {
-          name: filename
+          name: filename,
+          extension:{
+            type: "versions:autodesk.core:File",
+            version: "1.0"
+          }
         },
         relationships: {
           storage: {
@@ -282,7 +285,6 @@ function versionSpecData(filename, folderId, objectId) {
   };
   return versionSpec;
 }
-
 
 function getMineType(fileName) {
   var re = /(?:\.([^.]+))?$/; // regex to extract file extension
