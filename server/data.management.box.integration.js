@@ -137,7 +137,7 @@ router.post('/integration/sendToAutodesk', jsonParser, function (req, res) {
         tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
         .then(function (project) {
           folderId = project.body.data.relationships.rootFolder.data.id;
-          sendToAutodesk(projectId, folderId, gdrivefileid, res, req);
+          sendToAutodesk(projectId, folderId, boxFileId, res, req);
         });
       break;
   }

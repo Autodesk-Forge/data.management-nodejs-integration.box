@@ -138,7 +138,7 @@ function prepareArrayForJSTree(listOf, canHaveChildren, data) {
       id: item.links.self.href,
       data: (item.relationships != null && item.relationships.derivatives != null ?
         item.relationships.derivatives.data.id : null),
-      text: item.attributes.displayName == null ? item.attributes.name : item.attributes.displayName,
+      text: (item.type==='versions' ? (new Date(Date.parse(item.attributes.createTime)).toString()) : item.attributes.displayName == null ? item.attributes.name : item.attributes.displayName),
       type: item.type,
       children: canHaveChildren
     };
