@@ -270,7 +270,7 @@ function createNewItemOrVersion(projectId, folderId, fileName, objectId, req) {
                 _resolve(versionData.body.data.id);
               })
               .catch(function (error) {
-                console.log('postVersion: failed');
+                console.log('postVersion: failed' + error);
 
                 _reject(error);
               });
@@ -285,14 +285,14 @@ function createNewItemOrVersion(projectId, folderId, fileName, objectId, req) {
                 _resolve(itemData.body.included[0].id);
               })
               .catch(function (error) {
-                console.log('postItem: failed');
+                console.log('postItem: failed' + error);
 
                 _reject(error);
               });
           }
         })
         .catch(function (error) {
-          console.log('getFolderContents: failed');
+          console.log('getFolderContents: failed' + error);
           _reject(error);
         });
     } catch (err) {
