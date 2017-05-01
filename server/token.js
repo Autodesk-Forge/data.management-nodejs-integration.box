@@ -22,24 +22,41 @@ function Token(session) {
   this._session = session;
 }
 
-Token.prototype.getTokenInternal = function () {
-  return this._session.tokeninternal;
+Token.prototype.getInternalOAuth = function () {
+  return this._session.internalOAuth;
 };
 
-Token.prototype.setTokenInternal = function (token) {
-  this._session.tokeninternal = token;
+Token.prototype.setInternalOAuth = function (internalOAuth) {
+  this._session.internalOAuth = internalOAuth;
 };
 
-Token.prototype.getTokenPublic = function () {
-  return this._session.tokenpublic;
+Token.prototype.getPublicOAuth = function () {
+  return this._session.publicOAuth;
 };
 
-Token.prototype.setTokenPublic = function (token) {
-  this._session.tokenpublic = token;
+Token.prototype.setPublicOAuth = function (publicOAuth) {
+  this._session.publicOAuth = publicOAuth;
+};
+
+Token.prototype.getInternalCredentials = function () {
+  return this._session.internalCredentials;
+};
+
+Token.prototype.setInternalCredentials = function (internalCredentials) {
+  this._session.internalCredentials = internalCredentials;
+};
+
+Token.prototype.getPublicCredentials = function () {
+  return this._session.publicCredentials;
+};
+
+Token.prototype.setPublicCredentials = function (publicCredentials) {
+  this._session.publicCredentials = publicCredentials;
 };
 
 Token.prototype.isAuthorized = function () {
-  return (this._session.tokenpublic != null);
+  // !! converts value into boolean
+  return (!!this._session.publicCredentials);
 };
 
 // box token handling

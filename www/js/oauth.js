@@ -68,7 +68,7 @@ function getForgeUserProfile(onsuccess) {
   jQuery.ajax({
     url: '/user/profile',
     success: function (profile) {
-      onsuccess(JSON.parse(profile));
+      onsuccess(profile);
     }
   });
 }

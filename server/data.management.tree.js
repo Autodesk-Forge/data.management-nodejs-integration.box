@@ -26,7 +26,7 @@ var express = require('express');
 var router = express.Router();
 
 // forge
-var ForgeDataManagement = require('forge-data-management');
+var forgeSDK = require('forge-apis');
 
 router.get('/dm/getTreeNode', function (req, res) {
   var tokenSession = new token(req.session);
@@ -35,62 +35,91 @@ router.get('/dm/getTreeNode', function (req, res) {
     return;
   }
 
-  // Configure OAuth2 access token for authorization: oauth2_access_code
-  var defaultClient = ForgeDataManagement.ApiClient.instance;
-  var oauth = defaultClient.authentications ['oauth2_access_code'];
-  oauth.accessToken = tokenSession.getTokenInternal();
+  var href = decodeURIComponent(req.query.id);
+  //("treeNode for " + href);
 
-
-  // which tree node?
-  var id = decodeURIComponent(req.query.id);
-
-  if (id == '#') {
+  if (href === '#') {
     // # stands for ROOT
-    var hubs = new ForgeDataManagement.HubsApi();
-    hubs.getHubs().then(function (data) {
-      res.end(prepareArrayForJSTree(data.data, true));
-    }).catch(function (error) { res.status(500).end(error); });
-  }
-  else {
-    var params = id.split('/');
+    var hubs = new forgeSDK.HubsApi();
+
+    hubs.getHubs({}, tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+      .then(function (data) {
+        res.json(prepareArrayForJSTree(data.body.data, true));
+      })
+      .catch(function (error) {
+        console.log(error);
+        respondWithError(res, error);
+      });
+  } else {
+    var params = href.split('/');
     var resourceName = params[params.length - 2];
     var resourceId = params[params.length - 1];
     switch (resourceName) {
       case 'hubs':
         // if the caller is a hub, then show projects
-        var hubs = new ForgeDataManagement.HubsApi();
-        hubs.getHubProjects(resourceId).then(function (hubs) {
-          res.end(prepareArrayForJSTree(hubs.data, true));
-        }).catch(function (error) { res.status(500).end(error); });
+        var projects = new forgeSDK.ProjectsApi();
+
+        projects.getHubProjects(resourceId/*hub_id*/, {},
+          tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+          .then(function (projects) {
+            res.json(prepareArrayForJSTree(projects.body.data, true));
+          })
+          .catch(function (error) {
+            console.log(error);
+            respondWithError(res, error);
+          });
         break;
       case 'projects':
         // if the caller is a project, then show folders
         var hubId = params[params.length - 3];
-        var project = new ForgeDataManagement.ProjectsApi();
-        project.getProject(hubId, resourceId).then(function (project) {
-          var folder = new ForgeDataManagement.FoldersApi();
-          var rootFolderId = project.data.relationships.rootFolder.data.id;
-          folder.getFolderContents(project.data.id, rootFolderId).then(function (folderContents) {
-            res.end(prepareArrayForJSTree(folderContents.data, true));
-          }).catch(function (error) {res.end(error);});
-        }).catch(function (error) { res.end(error); });
+        var projects = new forgeSDK.ProjectsApi();
+        projects.getProject(hubId, resourceId/*project_id*/,
+          tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+          .then(function (project) {
+            var rootFolderId = project.body.data.relationships.rootFolder.data.id;
+            var folders = new forgeSDK.FoldersApi();
+            folders.getFolderContents(resourceId, rootFolderId, {},
+              tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+              .then(function (folderContents) {
+                res.json(prepareArrayForJSTree(folderContents.body.data, true));
+              })
+              .catch(function (error) {
+                console.log(error);
+                respondWithError(res, error);
+              });
+          })
+          .catch(function (error) {
+            console.log(error);
+            respondWithError(res, error);
+          });
         break;
       case 'folders':
         // if the caller is a folder, then show contents
         var projectId = params[params.length - 3];
-        var folder = new ForgeDataManagement.FoldersApi();
-        folder.getFolderContents(projectId, resourceId).then(function (folderContents) {
-          res.end(prepareArrayForJSTree(folderContents.data, true));
-        }).catch(function (error) {res.end(error);});
+        var folders = new forgeSDK.FoldersApi();
+        folders.getFolderContents(projectId, resourceId/*folder_id*/,
+          {}, tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+          .then(function (folderContents) {
+            res.json(prepareArrayForJSTree(folderContents.body.data, true));
+          })
+          .catch(function (error) {
+            console.log(error);
+            respondWithError(res, error);
+          });
         break;
       case 'items':
         // if the caller is an item, then show versions
         var projectId = params[params.length - 3];
-        var items = new ForgeDataManagement.ItemsApi();
-        items.getItemVersions(projectId, resourceId/*item_id*/).then(function(itemVersions){
-          res.end(prepareArrayForJSTree(itemVersions.data, false));
-        }).catch(function (error) { res.end(error); });
-        break;
+        var items = new forgeSDK.ItemsApi();
+        items.getItemVersions(projectId, resourceId/*item_id*/,
+          {}, tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+          .then(function (versions) {
+            res.json(prepareArrayForJSTree(versions.body.data, false));
+          })
+          .catch(function (error) {
+            console.log(error);
+            respondWithError(res, error);
+          });
     }
   }
 });
@@ -100,16 +129,22 @@ function prepareArrayForJSTree(listOf, canHaveChildren, data) {
   if (listOf == null) return '';
   var treeList = [];
   listOf.forEach(function (item, index) {
+    //console.log(item.links.self.href);
+    //console.log(
+    //  "item.attributes.displayName = " + item.attributes.displayName +
+    //  "; item.attributes.name = " + item.attributes.name
+    //);
     var treeItem = {
       id: item.links.self.href,
-      data: (item.relationships != null && item.relationships.derivatives != null ? item.relationships.derivatives.data.id : null),
-      text: (item.attributes.displayName == null ? item.attributes.name : item.attributes.displayName),
+      data: (item.relationships != null && item.relationships.derivatives != null ?
+        item.relationships.derivatives.data.id : null),
+      text: item.attributes.displayName == null ? item.attributes.name : item.attributes.displayName,
       type: item.type,
       children: canHaveChildren
     };
     treeList.push(treeItem);
   });
-  return JSON.stringify(treeList);
+  return treeList;
 }
 
 module.exports = router;

@@ -33,11 +33,20 @@ var config = require('./config');
 // box sdk: https://github.com/box/box-node-sdk/
 var BoxSDK = require('box-node-sdk');
 
-// forge 
-var ForgeDataManagement = require('forge-data-management');
-var ForgeOSS = require('forge-oss');
+// forge
+var forgeSDK = require('forge-apis');
+//var ForgeDataManagement = require('forge-data-management');
+//var ForgeOSS = require('forge-oss');
 
 var request = require('request');
+
+function respondWithError(res, error) {
+  if (error.statusCode) {
+    res.status(error.statusCode).end(error.statusMessage);
+  } else {
+    res.status(500).end(error.message);
+  }
+}
 
 router.post('/integration/sendToBox', jsonParser, function (req, res) {
   var tokenSession = new token(req.session);
@@ -45,10 +54,6 @@ router.post('/integration/sendToBox', jsonParser, function (req, res) {
     res.status(401).json({error: 'Please login first'});
     return;
   }
-  // Configure OAuth2 access token for authorization: oauth2_access_code
-  var defaultClient = ForgeDataManagement.ApiClient.instance;
-  var oauth = defaultClient.authentications ['oauth2_access_code'];
-  oauth.accessToken = tokenSession.getTokenInternal();
 
   // file IDs to transfer
   var autodeskFileId = decodeURIComponent(req.body.autodeskfile);
@@ -60,54 +65,47 @@ router.post('/integration/sendToBox', jsonParser, function (req, res) {
   var projectId = params[params.length - 3];
   var versionId = params[params.length - 1];
 
-  var versions = new ForgeDataManagement.VersionsApi();
-  versions.getVersion(projectId, versionId).then(function (version) {
-    if (!version.data.relationships.storage || !version.data.relationships.storage.meta.link.href) {
-      res.status(500).json({error: 'No storage defined, cannot transfer.'});
-      return;
-    }
-    var storageLocation = version.data.relationships.storage.meta.link.href;
-    // the storage location should be in the form of
-    // /oss/v2/buckets/::bucketKey::/objects/::objectName::
-    params = storageLocation.split('/');
-    var bucketKey = params[params.length - 3];
-    var objectName = params[params.length - 1];
-
-    var defaultOSSClient = ForgeOSS.ApiClient.instance;
-    var oauthOSS = defaultOSSClient.authentications ['oauth2_application']; // not the 'oauth2_access_code', as per documentation
-    oauthOSS.accessToken = tokenSession.getTokenInternal();
-    var objects = new ForgeOSS.ObjectsApi();
-
-    // npm forge-oss call to download not working
-    //objects.getObject(bucketKey, objectName).then(function (file) {
-
-    // workaround to download
-    request({
-      url: storageLocation,
-      method: "GET",
-      headers: {
-        'Authorization': 'Bearer ' + tokenSession.getTokenInternal(),
-      },
-      encoding: null
-    }, function (error, response, file) {
-      if (error) console.log(error);
-      // end of workaround
-
-      var sdk = new BoxSDK({
-        clientID: config.box.credentials.client_id, // required
-        clientSecret: config.box.credentials.client_secret // required
-      });
-
-      var box = sdk.getBasicClient(tokenSession.getBoxToken());
-      box.files.uploadFile(boxFolderId, version.data.attributes.name, file, function (err, data) {
-        if (err)
-          res.status(500).json({error: err.message});
-        else
-          res.status(200).json({file: version.data.attributes.name});
+  var versions = new forgeSDK.VersionsApi();
+  versions.getVersion(projectId, versionId, tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+    .then(function (version) {
+      if (!version.body.data.relationships.storage || !version.body.data.relationships.storage.meta.link.href) {
+        res.status(500).json({error: 'No storage defined, cannot transfer.'});
         return;
-      });
-    });//.catch(function (e) { res.status(e.error.statusCode).json({error: e.error.body}) });
-  }).catch(function (e) { res.status(e.error.statusCode).json({error: e.error.body}) });
+      }
+      var storageLocation = version.body.data.relationships.storage.meta.link.href;
+      // the storage location should be in the form of
+      // /oss/v2/buckets/::bucketKey::/objects/::objectName::
+      params = storageLocation.split('/');
+      var bucketKey = params[params.length - 3];
+      var objectName = params[params.length - 1];
+
+      // workaround to download
+      request({
+        url: storageLocation,
+        method: "GET",
+        headers: {
+          'Authorization': 'Bearer ' + tokenSession.getInternalCredentials().access_token
+        },
+        encoding: null
+      }, function (error, response, file) {
+        if (error) console.log(error);
+        // end of workaround
+
+        var sdk = new BoxSDK({
+          clientID: config.box.credentials.client_id, // required
+          clientSecret: config.box.credentials.client_secret // required
+        });
+
+        var box = sdk.getBasicClient(tokenSession.getBoxToken());
+        box.files.uploadFile(boxFolderId, version.body.data.attributes.name, file, function (err, data) {
+          if (err)
+            res.status(500).json({error: err.message});
+          else
+            res.status(200).json({file: version.body.data.attributes.name});
+          return;
+        });
+      });//.catch(function (e) { res.status(e.error.statusCode).json({error: e.error.body}) });
+    }).catch(function (e) { res.status(e.error.statusCode).json({error: e.error.body}) });
 });
 
 router.post('/integration/sendToAutodesk', jsonParser, function (req, res) {
@@ -116,12 +114,6 @@ router.post('/integration/sendToAutodesk', jsonParser, function (req, res) {
     res.status(401).json({error: 'Please login first'});
     return;
   }
-  // Configure OAuth2 access token for authorization: oauth2_access_code
-  var defaultClient = ForgeDataManagement.ApiClient.instance;
-  var oauth = defaultClient.authentications ['oauth2_access_code'];
-  oauth.accessToken = tokenSession.getTokenInternal();
-
-  var projects = new ForgeDataManagement.ProjectsApi();
 
   // file IDs to transfer
   var autodeskType = req.body.autodesktype; // projects or folders
@@ -140,10 +132,13 @@ router.post('/integration/sendToAutodesk', jsonParser, function (req, res) {
     case "projects":
       projectId = params[params.length - 1];
       var hubId = params[params.length - 3];
-      projects.getProject(hubId, projectId).then(function (project) {
-        folderId = project.data.relationships.rootFolder.data.id;
-        sendToAutodesk(projectId, folderId, boxFileId, res, req);
-      });
+      var projects = new forgeSDK.ProjectsApi();
+      projects.getProject(hubId, projectId,
+        tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+        .then(function (project) {
+          folderId = project.body.data.relationships.rootFolder.data.id;
+          sendToAutodesk(projectId, folderId, gdrivefileid, res, req);
+        });
       break;
   }
 });
@@ -157,37 +152,152 @@ function sendToAutodesk(projectId, folderId, boxFileId, res, req) {
   var box = sdk.getBasicClient(tokenSession.getBoxToken());
   box.files.get(boxFileId, null, function (err, fileInfo) {
     var fileName = fileInfo.name;
-    var projects = new ForgeDataManagement.ProjectsApi();
-    projects.postStorage(projectId, JSON.stringify(storageSpecData(fileName, folderId))).then(function (storage) {
-      var objectId = storage.data.id;
-      var bucketKey = getBucketKeyObjectName(objectId).bucketKey;
-      var objectName = getBucketKeyObjectName(objectId).objectName;
+    var fileSize = fileInfo.size;
 
-      box.files.getReadStream(boxFileId, null, function (err, filestream) {
-        var mineType = getMineType(fileName);
+    request({
+      url: 'https://api.box.com/2.0/files/'+boxFileId+'/content',
+      method: "GET",
+      headers: {
+        'Authorization': 'Bearer ' + tokenSession.getBoxToken()
+      },
+      encoding: null
+    }, function(error, response, body) {
 
-        //var defaultOSSClient = ForgeOSS.ApiClient.instance;
-        //var oauthOSS = defaultOSSClient.authentications ['oauth2_application']; // not the 'oauth2_access_code', as per documentation
-        //oauthOSS.accessToken = tokenSession.getTokenInternal();
-        //var objects = new ForgeOSS.ObjectsApi();
+    //
+    //box.files.getReadStream(boxFileId, null, function (err, filestream) {
+      var mineType = getMineType(fileName);
+      var projects = new forgeSDK.ProjectsApi();
+      projects.postStorage(projectId, JSON.stringify(storageSpecData(fileName, folderId)),
+        tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+        .then(function (storageData) {
+          var objectId = storageData.body.data.id;
+          var bucketKey = getBucketKeyObjectName(objectId).bucketKey;
+          var objectName = getBucketKeyObjectName(objectId).objectName;
 
-        // this request should be done via ObjectsApi.uploadObject call
-        // but it's missing the header, so using this workaround for now
-        request({
-          url: 'https://developer.api.autodesk.com/oss/v2/buckets/' + bucketKey + '/objects/' + objectName,
-          method: "PUT",
-          headers: {
-            'Authorization': 'Bearer ' + tokenSession.getTokenInternal(),
-            'Content-Type': mineType
-          },
-          body: filestream
-        }, function (error, response, body) {
-          projects.postItem(projectId, JSON.stringify(versionSpecData(fileName, folderId, objectId))).then(function (version) {
-            res.status(200).json({file: version.data.attributes.displayName});
-          });
-        });
+
+          uploadFile(projectId, folderId, fileName, body.length, body, req)
+            .then(function (objectId) {
+              createNewItemOrVersion(projectId, folderId, fileName, objectId, req)
+                .then(function (versionId) {
+                  var str = "";
+                  res.status(200).json({result: "OK", file: fileName});
+                })
+                .catch(function (error) {
+                  var str = "";
+                  respondWithError(res, error);
+                });
+            })
+            .catch(function (error) {
+              respondWithError(res, error);
+            });
+        }).catch(function(err){
+          console.log(err);
       });
     });
+  });
+}
+
+function withoutExtension(fileName) {
+  // Remove the last ".<extension>"
+  // e.g.:
+  // my.file.jpg >> my.file
+  // myfile >> myfile
+  return fileName.replace(/(.*)\.(.*?)$/, "$1");
+}
+
+function uploadFile(projectId, folderId, fileName, fileSize, fileData, req) {
+  return new Promise(function (_resolve, _reject) {
+    try {
+      // Ask for storage for the new file we want to upload
+      var tokenSession = new token(req.session);
+      var projects = new forgeSDK.ProjectsApi();
+      projects.postStorage(projectId, JSON.stringify(storageSpecData(fileName, folderId)),
+        tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+        .then(function (storageData) {
+          var objectId = storageData.body.data.id;
+          var bucketKeyObjectName = getBucketKeyObjectName(objectId);
+
+          // Upload the new file
+          var objects = new forgeSDK.ObjectsApi();
+          objects.uploadObject(
+            bucketKeyObjectName.bucketKey, bucketKeyObjectName.objectName, fileSize, fileData,
+            {}, tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+            .then(function (objectData) {
+              console.log('uploadObject: succeeded');
+              _resolve(objectData.body.objectId);
+            })
+            .catch(function (error) {
+              console.log('uploadObject: failed');
+              _reject(error);
+            });
+
+        })
+        .catch(function (error) {
+          _reject(error);
+        });
+    } catch (err) {
+      _reject(err);
+    }
+  });
+}
+
+function createNewItemOrVersion(projectId, folderId, fileName, objectId, req) {
+  return new Promise(function (_resolve, _reject) {
+    try {
+      var tokenSession = new token(req.session);
+
+      var folders = new forgeSDK.FoldersApi();
+      folders.getFolderContents(projectId, folderId, {},
+        tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+        .then(function (folderData) {
+          var item = null;
+          for (var key in folderData.body.data) {
+            item = folderData.body.data[key];
+            if (item.attributes.displayName === fileName || item.attributes.displayName === withoutExtension(fileName)) {
+              break;
+            } else {
+              item = null;
+            }
+          }
+
+          if (item) {
+            // We found it so we should create a new version
+            var versions = new forgeSDK.VersionsApi();
+            var body = JSON.stringify(versionSpecData(fileName, projectId, item.id, objectId));
+            versions.postVersion(projectId, body,
+              tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+              .then(function (versionData) {
+                _resolve(versionData.body.data.id);
+              })
+              .catch(function (error) {
+                console.log('postVersion: failed');
+
+                _reject(error);
+              });
+          } else {
+            // We did not find it so we should create it
+            var items = new forgeSDK.ItemsApi();
+            var body = JSON.stringify(itemSpecData(fileName, projectId, folderId, objectId));
+            items.postItem(projectId, body,
+              tokenSession.getInternalOAuth(), tokenSession.getInternalCredentials())
+              .then(function (itemData) {
+                // Get the versionId out of the reply
+                _resolve(itemData.body.included[0].id);
+              })
+              .catch(function (error) {
+                console.log('postItem: failed');
+
+                _reject(error);
+              });
+          }
+        })
+        .catch(function (error) {
+          console.log('getFolderContents: failed');
+          _reject(error);
+        });
+    } catch (err) {
+      _reject(err);
+    }
   });
 }
 
@@ -202,87 +312,137 @@ function getBucketKeyObjectName(objectId) {
   var bucketKeyValue = bucketKeyParams[bucketKeyParams.length - 1];
 
   var ret =
-  {
-    bucketKey: bucketKeyValue,
-    objectName: objectNameValue
-  };
+    {
+      bucketKey: bucketKeyValue,
+      objectName: objectNameValue
+    };
   return ret;
 }
 
 function storageSpecData(fileName, folderId) {
   var storageSpecs =
-  {
-    data: {
-      type: 'objects',
-      attributes: {
-        name: fileName
-      },
-      relationships: {
-        target: {
-          data: {
-            type: 'folders',
-            id: folderId
-          }
-        }
-      }
-    }
-  };
-  return storageSpecs;
-}
-
-function versionSpecData(filename, folderId, objectId) {
-  var versionSpec =
-  {
-    jsonapi: {
-      version: "1.0"
-    },
-    data:
-      {
-        type: "items",
+    {
+      data: {
+        type: 'objects',
         attributes: {
-          displayName: filename,
-          extension: {
-            type: "items:autodesk.core:File",
-            version: "1.0"
-          }
+          name: fileName
         },
         relationships: {
-          tip: {
+          target: {
             data: {
-              type: "versions",
-              id: "1"
-            }
-          },
-          parent: {
-            data: {
-              type: "folders",
+              type: 'folders',
               id: folderId
             }
           }
         }
+      }
+    };
+  return storageSpecs;
+}
+
+function itemSpecData(fileName, projectId, folderId, objectId) {
+  var itemsType = projectId.startsWith("a.") ? "items:autodesk.core:File" : "items:autodesk.bim360:File";
+  var versionsType = projectId.startsWith("a.") ? "versions:autodesk.core:File" : "versions:autodesk.bim360:File";
+  var itemSpec = {
+    jsonapi: {
+      version: "1.0"
+    },
+    data: {
+      type: "items",
+      attributes: {
+        displayName: fileName,
+        extension: {
+          type: itemsType,
+          version: "1.0"
+        }
       },
-    included: [
-      {
-        type: "versions",
-        id: "1",
-        attributes: {
-          name: filename,
-          extension:{
-            type: "versions:autodesk.core:File",
-            version: "1.0"
+      relationships: {
+        tip: {
+          data: {
+            type: "versions",
+            id: "1"
           }
         },
-        relationships: {
-          storage: {
-            data: {
-              type: "objects",
-              id: objectId
-            }
+        parent: {
+          data: {
+            type: "folders",
+            id: folderId
           }
         }
       }
-    ]
+    },
+    included: [{
+      type: "versions",
+      id: "1",
+      attributes: {
+        name: fileName,
+        extension: {
+          type: versionsType,
+          version: "1.0"
+        }
+      },
+      relationships: {
+        storage: {
+          data: {
+            type: "objects",
+            id: objectId
+          }
+        }
+      }
+    }]
   };
+
+  if (fileName.endsWith(".iam.zip")) {
+    itemSpec.data[0].attributes.extension.type = "versions:autodesk.a360:CompositeDesign";
+    itemSpec.data[0].attributes.name = fileName.slice(0, -4);
+    itemSpec.included[0].attributes.name = fileName.slice(0, -4);
+  }
+
+  console.log(itemSpec);
+
+  return itemSpec;
+}
+
+function versionSpecData(fileName, projectId, itemId, objectId) {
+  var versionsType = projectId.startsWith("a.") ? "versions:autodesk.core:File" : "versions:autodesk.bim360:File";
+
+  var versionSpec = {
+    "jsonapi": {
+      "version": "1.0"
+    },
+    "data": {
+      "type": "versions",
+      "attributes": {
+        "name": fileName,
+        "extension": {
+          "type": versionsType,
+          "version": "1.0"
+        }
+      },
+      "relationships": {
+        "item": {
+          "data": {
+            "type": "items",
+            "id": itemId
+          }
+        },
+        "storage": {
+          "data": {
+            "type": "objects",
+            "id": objectId
+          }
+        }
+      }
+    }
+  }
+
+  if (fileName.endsWith(".iam.zip")) {
+    versionSpec.data.attributes.extension.type = "versions:autodesk.a360:CompositeDesign";
+    versionSpec.data.attributes.name = fileName.slice(0, -4);
+  }
+
+  console.log(versionSpec);
+
   return versionSpec;
 }
 

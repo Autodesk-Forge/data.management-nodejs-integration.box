@@ -25,7 +25,7 @@ $(document).ready(function () {
   else {
     $('#loginBox').hide();
     $('#refreshBoxTree').show();
-    $('#refreshBoxTree').click(function(){
+    $('#refreshBoxTree').click(function () {
       $('#myBoxFiles').jstree(true).refresh();
     });
     prepareBoxTree();
@@ -108,32 +108,25 @@ function sendToAutodesk(boxNode, autodeskNode) {
     return;
   }
 
-  isFileSupported(re.exec(boxNode.text)[1], function (supported) {
-    if (!supported) {
-      $.notify('File "' + boxNode.text + '" cannot be translated to Forge Viewer', 'warn');
+  $.notify('Preparing to send file "' + boxNode.text + '" to "' + autodeskNode.text + '" Autodesk ' + autodeskNode.type, 'info');
+
+  jQuery.ajax({
+    url: '/integration/sendToAutodesk',
+    contentType: 'application/json',
+    type: 'POST',
+    dataType: 'json',
+    data: JSON.stringify({
+      'autodesktype': autodeskNode.type, // projects or folders
+      'autodeskid': autodeskNode.id,
+      'boxfile': boxNode.id
+    }),
+    success: function (res) {
+      $.notify('Transfer of file "' + res.file + '" completed', 'info');
+      $('#myAutodeskFiles').jstree(true).refresh_node(autodeskNode);
+    },
+    error: function (res) {
+      $.notify(res.error, 'error');
     }
-
-    $.notify('Preparing to send file "' + boxNode.text + '" to "' + autodeskNode.text + '" Autodesk ' + autodeskNode.type, 'info');
-
-    jQuery.ajax({
-      url: '/integration/sendToAutodesk',
-      contentType: 'application/json',
-      type: 'POST',
-      dataType: 'json',
-      data: JSON.stringify({
-        'autodesktype': autodeskNode.type, // projects or folders
-        'autodeskid': autodeskNode.id,
-        'boxfile': boxNode.id
-      }),
-      success: function (res) {
-        $.notify('Transfer of file "' + res.file + '" completed', 'info');
-        $('#myAutodeskFiles').jstree(true).refresh_node(autodeskNode);
-      },
-      error: function (res) {
-        $.notify(res.error, 'error');
-      }
-    });
-
   });
 }
 
