@@ -14,7 +14,7 @@
 
 This sample show a simple integration [Data Management API](https://developer.autodesk.com/en/docs/data/v2/overview/) and [Box](https://www.box.com/about-us). The front-end will look like:
   
-![](www/img/indexpage.png)
+![thumbnail](www/img/indexpage.png)
 
 ### Live version
 
