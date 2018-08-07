@@ -10,6 +10,10 @@
 [![OSS](https://img.shields.io/badge/OSS-v2-green.svg)](http://developer.autodesk.com/)
 [![Model-Derivative](https://img.shields.io/badge/Model%20Derivative-v2-green.svg)](http://developer.autodesk.com/)
 
+# Deprecated
+
+## This sample is no longer maintained, please refer to [BIM 360 File Transfer](https://github.com/Autodesk-Forge/bim360appstore-data.management-nodejs-transfer.storage) sample. 
+
 # Description
 
 This sample show a simple integration [Data Management API](https://developer.autodesk.com/en/docs/data/v2/overview/) and [Box](https://www.box.com/about-us). The front-end will look like:
